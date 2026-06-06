@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Feed Value Calculator</title>
+<meta name="description" content="Prices a corn-roughage blend on dry-matter and as-fed basis, and compares it back to corn.">
+<meta name="color-scheme" content="light only">
+<meta name="theme-color" content="#ece2cd">
+<!-- Favicons -->
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+<!-- iOS add-to-home-screen: opaque PNG at the site root (no alpha) -->
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="apple-touch-icon-precomposed" href="apple-touch-icon-precomposed.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Feed Value">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#ece2cd;
+    --paper-2:#f3ebd9;
+    --card:#fbf6ea;
+    --ink:#29241d;
+    --ink-2:#5f5749;
+    --ink-3:#928871;
+    --line:rgba(41,36,29,.14);
+    --line-soft:rgba(41,36,29,.08);
+    --gold:#b3700b;
+    --gold-deep:#8c5604;
+    --green:#3f5d39;
+    --green-soft:#5c7853;
+    --cream:#f4eeda;
+    --field-bg:#37532f;
+    --accent-bg:rgba(179,112,11,.09);
+    --radius:14px;
+    --shadow:0 1px 2px rgba(41,36,29,.05), 0 14px 40px -22px rgba(41,36,29,.45);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    min-height:100vh;
+    position:relative;
+  }
+  /* subtle paper grain */
+  body::before{
+    content:"";
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+    mix-blend-mode:multiply;
+  }
+
+  .wrap{
+    position:relative; z-index:1;
+    max-width:1080px;
+    margin:0 auto;
+    padding:clamp(22px,4vw,56px) clamp(18px,4vw,40px) 64px;
+  }
+
+  /* ---------- header ---------- */
+  header{
+    background:var(--ink);
+    color:#fff;
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:clamp(26px,4vw,40px) clamp(22px,4vw,38px);
+    margin-bottom:clamp(22px,3vw,34px);
+    position:relative; overflow:hidden;
+  }
+  header::after{
+    content:""; position:absolute; right:-50px; top:-60px;
+    width:220px; height:220px; border-radius:50%;
+    background:radial-gradient(circle at center, rgba(179,112,11,.38), transparent 70%);
+    pointer-events:none;
+  }
+  .kicker{
+    font-family:'Spline Sans Mono', ui-monospace, monospace;
+    font-size:.72rem; letter-spacing:.26em; text-transform:uppercase;
+    color:#d6b87a; font-weight:500;
+    display:flex; align-items:center; gap:.7em;
+    position:relative;
+  }
+  .kicker::before{
+    content:""; width:30px; height:1.5px; background:#d6b87a; display:inline-block;
+  }
+  h1{
+    font-family:'Fraunces', Georgia, serif;
+    font-optical-sizing:auto;
+    font-weight:600;
+    font-size:clamp(2.1rem,5vw,3.25rem);
+    line-height:1.02;
+    letter-spacing:-.01em;
+    margin:.32em 0 .28em;
+    color:#ffffff;
+    position:relative;
+  }
+  h1 em{ font-style:italic; color:#e9c27a; font-weight:500; }
+  .lede{
+    max-width:54ch; color:rgba(255,255,255,.8); font-size:1.02rem; margin:0;
+    position:relative;
+  }
+
+  /* ---------- layout ---------- */
+  .grid{
+    display:grid;
+    grid-template-columns:1.45fr 1fr;
+    gap:clamp(16px,2vw,26px);
+    align-items:start;
+  }
+  @media (max-width:840px){ .grid{ grid-template-columns:1fr; } }
+
+  .col-left{ display:flex; flex-direction:column; gap:clamp(14px,2vw,20px); }
+
+  /* ---------- cards ---------- */
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:clamp(18px,2.4vw,26px);
+  }
+  .card-head{
+    display:flex; align-items:baseline; gap:.65em;
+    margin-bottom:18px;
+  }
+  .card-head .num{
+    font-family:'Spline Sans Mono', monospace;
+    font-size:.74rem; color:var(--cream);
+    background:var(--green); border-radius:6px;
+    width:1.7em; height:1.7em; display:grid; place-items:center;
+    font-weight:600; flex:none;
+  }
+  .card-head h2{
+    font-family:'Fraunces', serif; font-weight:600;
+    font-size:1.16rem; margin:0; letter-spacing:-.01em;
+  }
+  .card-head .sub{
+    margin-left:auto; font-size:.78rem; color:var(--ink-3);
+    font-family:'Spline Sans Mono', monospace; letter-spacing:.02em;
+  }
+
+  /* input rows */
+  .field-row{
+    display:grid; grid-template-columns:1fr; gap:14px 22px;
+  }
+  .field-row.two{ grid-template-columns:1fr 1fr; }
+  @media (max-width:440px){ .field-row.two{ grid-template-columns:1fr; } }
+
+  .field{ display:flex; flex-direction:column; gap:5px; }
+  .field label{
+    font-size:.82rem; font-weight:600; color:var(--ink-2);
+    display:flex; justify-content:space-between; align-items:baseline; gap:.5em;
+  }
+  .field label .unit{
+    font-family:'Spline Sans Mono', monospace; font-weight:500;
+    font-size:.74rem; color:var(--ink-3); letter-spacing:.02em;
+  }
+  .inputline{
+    position:relative; display:flex; align-items:center;
+    border:1px solid var(--line); border-radius:9px;
+    background:var(--paper-2);
+    transition:border-color .15s, box-shadow .15s, background .15s;
+  }
+  .inputline:focus-within{
+    border-color:var(--gold);
+    box-shadow:0 0 0 3px rgba(179,112,11,.16);
+    background:#fff;
+  }
+  .inputline .pre{
+    padding-left:12px; color:var(--ink-3);
+    font-family:'Spline Sans Mono', monospace; font-size:.95rem;
+  }
+  input[type=number]{
+    -moz-appearance:textfield; appearance:textfield;
+    border:0; background:transparent; outline:none;
+    width:100%; padding:11px 12px;
+    font-family:'Spline Sans Mono', monospace;
+    font-size:1.05rem; font-weight:500; color:var(--ink);
+    text-align:right;
+  }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  input[type=number]:disabled{ color:var(--ink-2); }
+  .inputline.locked{ background:transparent; border-style:dashed; border-color:var(--line-soft); }
+
+  /* dropdown */
+  .select-wrap{ position:relative; }
+  select.feed-select{
+    -webkit-appearance:none; -moz-appearance:none; appearance:none;
+    width:100%; padding:13px 42px 13px 14px;
+    font-family:'Hanken Grotesk', sans-serif; font-size:1rem; font-weight:600;
+    color:var(--ink); background:var(--paper-2);
+    border:1px solid var(--line); border-radius:9px; cursor:pointer;
+    transition:border-color .15s, box-shadow .15s, background .15s;
+  }
+  select.feed-select:focus{
+    outline:none; border-color:var(--gold);
+    box-shadow:0 0 0 3px rgba(179,112,11,.16); background:#fff;
+  }
+  .select-wrap::after{
+    content:""; position:absolute; right:18px; top:50%;
+    width:8px; height:8px;
+    border-right:2px solid var(--gold); border-bottom:2px solid var(--gold);
+    transform:translateY(-65%) rotate(45deg);
+    pointer-events:none;
+  }
+
+  /* ---------- results panel ---------- */
+  .results{
+    background:var(--field-bg);
+    color:var(--cream);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    border:1px solid rgba(0,0,0,.18);
+    padding:clamp(20px,2.6vw,28px);
+    position:sticky; top:20px;
+    overflow:hidden;
+  }
+  .results::after{
+    content:""; position:absolute; right:-40px; top:-40px;
+    width:180px; height:180px; border-radius:50%;
+    background:radial-gradient(circle at center, rgba(179,112,11,.5), transparent 70%);
+    pointer-events:none;
+  }
+  .results .rk{
+    font-family:'Spline Sans Mono', monospace; font-size:.7rem;
+    letter-spacing:.24em; text-transform:uppercase;
+    color:#d6b87a; font-weight:500; margin-bottom:18px;
+    display:flex; align-items:center; gap:.7em;
+  }
+  .results .rk::before{ content:""; width:26px; height:1.5px; background:#d6b87a; }
+
+  .result-item{ padding:14px 0; border-bottom:1px solid rgba(244,238,218,.16); }
+  .result-item:last-of-type{ border-bottom:0; }
+  .result-item .rl{
+    font-size:.82rem; color:rgba(244,238,218,.78); font-weight:500;
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .result-item .rl .ru{
+    font-family:'Spline Sans Mono', monospace; font-size:.74rem;
+    color:rgba(244,238,218,.5);
+  }
+  .result-item .rv{
+    font-family:'Fraunces', serif; font-weight:600;
+    font-size:clamp(1.5rem,3.4vw,1.95rem); line-height:1.1;
+    margin-top:3px; letter-spacing:-.01em;
+  }
+  .result-item.hero{
+    background:rgba(179,112,11,.16);
+    margin:8px -14px 0; padding:16px 14px; border-radius:10px;
+    border-bottom:0;
+  }
+  .result-item.hero .rl{ color:#f1d9a7; }
+  .result-item.hero .rv{ color:#ffd98a; font-size:clamp(1.7rem,4vw,2.3rem); }
+
+  /* ---------- toolbar ---------- */
+  .toolbar{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    margin-top:22px;
+  }
+  button.btn{
+    font-family:'Hanken Grotesk', sans-serif; font-weight:600; font-size:.86rem;
+    border:1px solid var(--line); background:var(--card); color:var(--ink);
+    padding:9px 16px; border-radius:9px; cursor:pointer;
+    transition:background .15s, border-color .15s, transform .05s;
+    box-shadow:0 1px 0 rgba(41,36,29,.04);
+  }
+  button.btn:hover{ background:#fff; border-color:var(--gold); color:var(--gold-deep); }
+  button.btn:active{ transform:translateY(1px); }
+  .toolbar .hint{ font-size:.8rem; color:var(--ink-3); }
+
+  footer{
+    margin-top:42px; padding-top:18px; border-top:1px solid var(--line);
+  }
+  footer p{
+    margin:0; font-style:italic; font-size:.82rem; line-height:1.55;
+    color:var(--ink-3); max-width:88ch;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Feed&nbsp;Value <em>Calculator</em></h1>
+    <p class="lede">Prices a corn&ndash;roughage blend on dry-matter and as-fed basis, and compares it back to corn.</p>
+  </header>
+
+  <div class="grid">
+
+    <!-- LEFT: inputs -->
+    <div class="col-left">
+
+      <!-- Corn -->
+      <section class="card">
+        <div class="card-head">
+          <span class="num">1</span>
+          <h2>Corn</h2>
+          <span class="sub">grain component</span>
+        </div>
+        <div class="field-row two">
+          <div class="field">
+            <label>Corn price <span class="unit">$/bu</span></label>
+            <div class="inputline">
+              <span class="pre">$</span>
+              <input type="number" id="cornBu" step="any" min="0" inputmode="decimal" value="4.67">
+            </div>
+          </div>
+          <div class="field">
+            <label>Corn dry matter <span class="unit">% DM</span></label>
+            <div class="inputline">
+              <input type="number" id="cornDM" step="any" min="0" max="100" inputmode="decimal" value="85">
+              <span class="pre" style="padding:0 12px 0 0;">%</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Roughage -->
+      <section class="card">
+        <div class="card-head">
+          <span class="num">2</span>
+          <h2>Roughage</h2>
+          <span class="sub">forage component</span>
+        </div>
+        <div class="field-row two">
+          <div class="field">
+            <label>Roughage price <span class="unit">$/ton</span></label>
+            <div class="inputline">
+              <span class="pre">$</span>
+              <input type="number" id="roughTon" step="any" min="0" inputmode="decimal" value="100">
+            </div>
+          </div>
+          <div class="field">
+            <label>Roughage dry matter <span class="unit">% DM</span></label>
+            <div class="inputline">
+              <input type="number" id="roughDM" step="any" min="0" max="100" inputmode="decimal" value="85">
+              <span class="pre" style="padding:0 12px 0 0;">%</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Feed type -->
+      <section class="card">
+        <div class="card-head">
+          <span class="num">3</span>
+          <h2>Feed Type</h2>
+          <span class="sub">DM basis</span>
+        </div>
+        <div class="field" style="margin-bottom:16px;">
+          <label>Select feed <span class="unit">presets &amp; editable</span></label>
+          <div class="select-wrap">
+            <select id="feedType" class="feed-select">
+              <option value="silage">Corn Silage</option>
+              <option value="earlage">Earlage</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:14px;">
+          <label>Feed ADF <span class="unit">% DM</span></label>
+          <div class="inputline">
+            <input type="number" id="adf" step="any" min="0" max="100" inputmode="decimal">
+            <span class="pre" style="padding:0 12px 0 0;">%</span>
+          </div>
+        </div>
+        <div class="field-row two">
+          <div class="field">
+            <label>Feed roughage <span class="unit">% of DM</span></label>
+            <div class="inputline">
+              <input type="number" id="feedRough" step="any" min="0" max="100" inputmode="decimal">
+              <span class="pre" style="padding:0 12px 0 0;">%</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>Feed grain <span class="unit">auto</span></label>
+            <div class="inputline locked">
+              <input type="number" id="feedGrain" disabled>
+              <span class="pre" style="padding:0 12px 0 0;">%</span>
+            </div>
+          </div>
+        </div>
+        <div class="field-row" style="margin-top:14px;">
+          <div class="field">
+            <label>Feed dry matter <span class="unit">% DM</span></label>
+            <div class="inputline">
+              <input type="number" id="feedDM" step="any" min="0" max="100" inputmode="decimal">
+              <span class="pre" style="padding:0 12px 0 0;">%</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="toolbar">
+        <button class="btn" id="resetBtn">Reset to defaults</button>
+        <span class="hint">Values update as you type.</span>
+      </div>
+    </div>
+
+    <!-- RIGHT: results -->
+    <aside>
+      <div class="results">
+        <div class="rk">Result</div>
+
+        <div class="result-item">
+          <div class="rl"><span>Value, dry-matter basis</span><span class="ru">$/ton DM</span></div>
+          <div class="rv" id="valTonDM">&mdash;</div>
+        </div>
+
+        <div class="result-item">
+          <div class="rl"><span>Value, as-fed basis</span><span class="ru">$/ton AF</span></div>
+          <div class="rv" id="valTonAF">&mdash;</div>
+        </div>
+
+        <div class="result-item hero">
+          <div class="rl"><span>Multiple of Corn</span><span class="ru">ratio</span></div>
+          <div class="rv" id="multCorn">&mdash;</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    <p>Value is determined based simply on DM of corn and roughage, which is replaced by the feedstuff in question. Actual costs may be greater or less than calculated value, and should be considered. Outputs are only as good as inputs. User assumes all risks.</p>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var DEFAULTS = { cornBu:4.67, roughTon:100, cornDM:85, roughDM:85 };
+  // Roughage DM (% of DM) estimated from ADF (% DM):  roughage = a*ADF + b
+  // Coefficients per feed type (Clemson "05 Feedstuff NE & Forage NDF" sheet).
+  var FEED_CONFIG = {
+    silage:  { adf:22, dm:35, a:2.4102, b:-2.2127 },  // Corn Silage
+    earlage: { adf:10, dm:65, a:1.8796, b:-2.1152 },  // Earlage
+    other:   { adf:"", dm:"", a:null,   b:null }
+  };
+
+  var computeIds = ["cornBu","roughTon","cornDM","roughDM","feedDM"]; // feedRough & adf handled separately
+  var el = {};
+  ["cornBu","roughTon","cornDM","roughDM","feedRough","feedDM","adf",
+   "feedGrain","feedType","valTonDM","valTonAF","multCorn","resetBtn"]
+    .forEach(function(id){ el[id] = document.getElementById(id); });
+
+  function num(id){ var v = parseFloat(el[id].value); return isFinite(v) ? v : NaN; }
+  function money(x){
+    if(!isFinite(x)) return "—";
+    return "$" + x.toLocaleString("en-US",{minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function fixed(x, dp){
+    if(!isFinite(x)) return "—";
+    return x.toLocaleString("en-US",{minimumFractionDigits:dp, maximumFractionDigits:dp});
+  }
+
+  function round1(x){ return Math.round(x*10)/10; }
+
+  // roughage (% of DM) from ADF for the currently selected feed; "" if not applicable
+  function roughageFromADF(adf){
+    var c = FEED_CONFIG[el.feedType.value];
+    if(!c || c.a === null || !isFinite(adf)) return "";
+    return round1(c.a*adf + c.b);
+  }
+
+  function applyFeedType(){
+    var c = FEED_CONFIG[el.feedType.value] || FEED_CONFIG.other;
+    el.feedDM.value = c.dm;
+    if(c.a === null){          // "Other": no ADF equation
+      el.adf.value = "";
+      el.adf.disabled = true;
+      el.feedRough.value = "";
+    } else {
+      el.adf.disabled = false;
+      el.adf.value = c.adf;
+      el.feedRough.value = roughageFromADF(c.adf);
+    }
+  }
+
+  function compute(){
+    var cornBu    = num("cornBu");
+    var roughTon  = num("roughTon");
+    var cornDM    = num("cornDM");
+    var roughDM   = num("roughDM");
+    var feedRough = num("feedRough");
+    var feedDM    = num("feedDM");
+
+    var cornTon     = cornBu / 0.028;
+    var cornTon100  = cornDM ? cornTon / (cornDM/100) : NaN;
+    var roughTon100 = roughDM ? roughTon / (roughDM/100) : NaN;
+    var feedGrain   = isFinite(feedRough) ? 100 - feedRough : NaN;
+    var valTonDM    = (cornTon100*(feedGrain/100)) + (roughTon100*(feedRough/100));
+    var valTonAF    = valTonDM * (feedDM/100);
+    var multCorn    = cornBu ? valTonAF / cornBu : NaN;
+
+    el.feedGrain.value      = isFinite(feedGrain) ? (Math.round(feedGrain*100)/100) : "";
+    el.valTonDM.textContent = money(valTonDM);
+    el.valTonAF.textContent = money(valTonAF);
+    el.multCorn.textContent = fixed(multCorn, 1);
+  }
+
+  // generic inputs just recompute outputs
+  computeIds.forEach(function(id){ el[id].addEventListener("input", compute); });
+
+  // ADF drives the roughage estimate (a programmatic set of feedRough won't blank ADF)
+  el.adf.addEventListener("input", function(){
+    var adf = parseFloat(el.adf.value);
+    if(isFinite(adf)){
+      var r = roughageFromADF(adf);
+      if(r !== "") el.feedRough.value = r;
+    }
+    compute();
+  });
+
+  // manual edit of roughage overrides ADF -> clear ADF to avoid confusion
+  el.feedRough.addEventListener("input", function(){
+    el.adf.value = "";
+    compute();
+  });
+
+  el.feedType.addEventListener("change", function(){ applyFeedType(); compute(); });
+
+  el.resetBtn.addEventListener("click", function(){
+    el.cornBu.value   = DEFAULTS.cornBu;
+    el.roughTon.value = DEFAULTS.roughTon;
+    el.cornDM.value   = DEFAULTS.cornDM;
+    el.roughDM.value  = DEFAULTS.roughDM;
+    el.feedType.value = "silage";
+    applyFeedType();
+    compute();
+  });
+
+  applyFeedType();   // seed ADF, DM, and ADF-derived roughage from default feed (Corn Silage)
+  compute();
+})();
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+</script>
+</body>
+</html>
